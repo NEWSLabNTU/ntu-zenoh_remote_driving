@@ -1,6 +1,7 @@
 #!/bin/bash
 
-source ${HOME}/repos/F1EIGHT/install/setup.bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/AutoSDV/install/setup.bash"
 source ./install/setup.bash
 source /opt/ros/humble/setup.bash
 
