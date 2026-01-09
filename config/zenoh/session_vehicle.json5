@@ -1,0 +1,159 @@
+// Zenoh session configuration for remote driving - Vehicle Side
+// Vehicle nodes run in CLIENT mode and connect directly to operator's router.
+// Set OPERATOR_IP environment variable or use ZENOH_CONFIG_OVERRIDE to specify operator address.
+// Based on rmw_zenoh 0.1.8 DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5
+{
+  // Client mode: connects to router, does not participate in gossip
+  mode: "client",
+
+  // Configure the session open behavior
+  open: {
+    return_conditions: {
+      connect_scouted: true,
+      declares: true,
+    },
+  },
+
+  // Connect to operator's Zenoh router
+  // Override with: export ZENOH_CONFIG_OVERRIDE='connect/endpoints=["tcp/192.168.225.71:7447"]'
+  connect: {
+    timeout_ms: { router: -1, peer: -1, client: 0 },
+    endpoints: [
+      // Default: operator IP from project network config
+      // This should be overridden via environment variable for flexibility
+      "tcp/192.168.225.71:7447"
+    ],
+    exit_on_failure: { router: false, peer: false, client: true },
+    retry: {
+      period_init_ms: 1000,
+      period_max_ms: 4000,
+      period_increase_factor: 2,
+    },
+  },
+
+  // Client mode doesn't listen for incoming connections
+  listen: {
+    timeout_ms: 0,
+    endpoints: [],
+    exit_on_failure: true,
+    retry: {
+      period_init_ms: 1000,
+      period_max_ms: 4000,
+      period_increase_factor: 2,
+    },
+  },
+
+  // Scouting configuration for client mode
+  scouting: {
+    timeout: 3000,
+    delay: 500,
+    multicast: {
+      enabled: false,
+      address: "224.0.0.224:7446",
+      interface: "auto",
+      ttl: 1,
+      autoconnect: { router: [], peer: ["router", "peer"], client: ["router"] },
+      autoconnect_strategy: { peer: { to_router: "always", to_peer: "greater-zid" } },
+      listen: true,
+    },
+    gossip: {
+      // Client mode doesn't participate in gossip
+      enabled: true,
+      multihop: false,
+      target: { router: ["router", "peer"], peer: ["router"]},
+      autoconnect: { router: [], peer: ["router", "peer"] },
+      autoconnect_strategy: { peer: { to_router: "always", to_peer: "greater-zid" } },
+    },
+  },
+
+  // Enable timestamping for transient_local durability
+  timestamping: {
+    enabled: { router: true, peer: true, client: true },
+    drop_future_timestamp: false,
+  },
+
+  queries_default_timeout: 600000,
+
+  routing: {
+    router: {
+      peers_failover_brokering: true,
+    },
+    peer: {
+      mode: "peer_to_peer",
+    },
+    interests: {
+      timeout: 10000,
+    },
+  },
+
+  // Transport settings
+  transport: {
+    unicast: {
+      open_timeout: 60000,
+      accept_timeout: 60000,
+      accept_pending: 10000,
+      max_sessions: 10000,
+      max_links: 1,
+      lowlatency: false,
+      qos: { enabled: true },
+      compression: { enabled: false },
+    },
+    multicast: {
+      join_interval: 2500,
+      max_sessions: 1000,
+      qos: { enabled: false },
+      compression: { enabled: false },
+    },
+    link: {
+      tx: {
+        sequence_number_resolution: "32bit",
+        lease: 60000,
+        keep_alive: 2,
+        batch_size: 65535,
+        queue: {
+          size: {
+            control: 2,
+            real_time: 2,
+            interactive_high: 2,
+            interactive_low: 2,
+            data_high: 2,
+            data: 2,
+            data_low: 2,
+            background: 2,
+          },
+          congestion_control: {
+            drop: {
+              wait_before_drop: 1000,
+              max_wait_before_drop_fragments: 50000,
+            },
+            block: {
+              wait_before_close: 60000000,
+            },
+          },
+          batching: {
+            enabled: true,
+            time_limit: 1,
+          },
+          allocation: {
+            mode: "lazy",
+          },
+        },
+      },
+      rx: {
+        buffer_size: 65535,
+        max_message_size: 1073741824,
+      },
+    },
+    shared_memory: {
+      enabled: false,
+    },
+  },
+
+  adminspace: {
+    enabled: true,
+    permissions: {
+      read: true,
+      write: false,
+    },
+  },
+}
