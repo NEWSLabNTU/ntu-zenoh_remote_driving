@@ -1,99 +1,139 @@
-# Remote Driving Demo
-It's the project to deploy the remote driving task over Zenoh.
+# Zenoh Remote Driving
 
+A remote driving demonstration system for the AutoSDV vehicle platform using Zenoh middleware. The system enables teleoperated control where an operator station sends commands and receives sensor data from a vehicle over the network.
 
-# Prerequisites
+## Architecture
 
-The project was tested on Jetpack 6.0 on a NVIDIA AGX Orin box.
+The system splits execution between two machines:
 
-- ROS Humble ([link](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html))
-- Autoware 2025.02. It's recommended to install the Debian package
-  released by NEWSLAB
-  [here](https://github.com/NEWSLabNTU/autoware/releases/tag/rosdebian%2F2025.02-1).
-- `zenoh-bridge-ros2dds`. You can install the Debian package [here](https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds?tab=readme-ov-file#linux-debian).
-- Make sure the [F1EIGHTH](https://github.com/NEWSLabNTU/F1EIGHT.git)
-  repo is already built in the **$HOME/repos** directory.
+- **Vehicle** (NVIDIA AGX Orin): Runs sensors (camera, LiDAR) and motor control
+- **Operator**: Runs visualization (RViz2) and sends control commands via keyboard
 
-# Build This Project
+Communication uses Zenoh-ROS2DDS bridge for transparent ROS 2 topic forwarding over TCP.
+
+## Prerequisites
+
+- **Hardware**: NVIDIA AGX Orin with JetPack 6.0
+- **ROS 2 Humble**: [Installation guide](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html)
+- **Autoware 2025.02**: Install the [NEWSLAB Debian package](https://github.com/NEWSLabNTU/autoware/releases/tag/rosdebian%2F2025.02-1)
+- **zenoh-bridge-ros2dds**: Install from [Zenoh releases](https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds?tab=readme-ov-file#linux-debian)
+- **AutoSDV**: Clone and build [AutoSDV](https://github.com/NEWSLabNTU/AutoSDV.git) at `~/repos/AutoSDV`
+
+## Setup
+
+Create the AutoSDV symlink (one-time):
 
 ```bash
-source ~/repos/F1EIGHTH/install/setup.bash
+ln -sfn ~/repos/AutoSDV script/AutoSDV
+```
+
+Use direnv for automatic environment setup:
+
+```bash
+direnv allow
+```
+
+Or source manually:
+
+```bash
+source ~/repos/AutoSDV/install/setup.bash
+```
+
+## Build
+
+```bash
 make build
 ```
 
-# Run This Project
-
-## The New Way
-
-We assumes the following IP assignments. Make sure your IP address is
-correctly configured.
-
-- Operator IP: 192.168.225.71
-- Vehicle IP: 192.168.225.73
-
-Source the setup scripts whenever you start a terminal on both vehicle
-and pilot sides.
+To install Python dependencies (first time only):
 
 ```bash
-source ~/zenoh_remote_driving/install/setup.bash
+make prepare
 ```
 
-### Step 1: Vehicle
+## Usage
 
-To run with default settings,
+### Network Configuration
 
-```sh
+Configure your network with these IP assignments:
+
+| Machine  | IP Address      |
+|----------|-----------------|
+| Operator | 192.168.225.71  |
+| Vehicle  | 192.168.225.73  |
+
+### Running the System
+
+If using direnv, the environment is set up automatically. Otherwise, source the workspace in every terminal.
+
+**Step 1: Start the vehicle**
+
+On the vehicle machine:
+
+```bash
 make run_vehicle
 ```
 
-Or to set the operator IP address to connect to,
+To specify a different operator IP:
 
-```sh
+```bash
 make run_vehicle OPERATOR_IP=X.Y.Z.W
 ```
 
-### Step 2: Operator
+**Step 2: Start the operator**
 
-First, run the pilot system. It will prompt a RViz window. You can
-wait a few seconds until the point cloud and video show up.
+On the operator machine:
 
-```sh
+```bash
 make run_pilot
 ```
 
-### Step 3: Run Keyboard Controller
+This opens RViz2 for visualization. Wait a few seconds for the point cloud and sensor data to appear.
 
-**Connect to the vehicle via SSH.** Open the keyboard controller.
+**Step 3: Start the controller**
 
-```
+SSH into the vehicle from the operator machine and run the keyboard controller:
+
+```bash
 ssh jetson@192.168.225.73
 make controller
 ```
 
-# Run This Project (Classical Way)
+Use the keyboard to control the vehicle:
+- Arrow keys for steering and throttle
+- Follow on-screen instructions for additional controls
 
-> [!NOTE]
-> WARNING: The instructions are outdated here.
+## Project Structure
 
-> [!NOTE]
-> Before execution, the **VEHICLE_IP** and **OPERATOR_IP** variables in the **env.sh** must be manually configured.
-
-- Vehicle
-
-```bash=
-source env.sh
-cd zenoh_remote_driving
-./src/ffmpeg/proxy
-
-# Open another window to execute the following command.
-source env.sh
-bash ./script/vehicle.sh
+```
+src/
+  rdrive_launch/       # Launch files and RViz config
+  remote_control/      # Vehicle motor control via PCA9685
+  autoware_manual_control/  # Keyboard control (submodule)
+  g923_control/        # Logitech G923 wheel controller (optional)
+  remote_lidar/        # Open3D point cloud viewer (optional)
+  ffmpeg/              # Video streaming proxy
+config/                # Configuration files
 ```
 
-- Operator
+## Make Targets
 
-```bash=
-cd zenoh_remote_driving
-source env.sh
-bash ./script/operator.sh
-```
+| Target             | Description                         |
+|--------------------|-------------------------------------|
+| `make build`       | Build the project                   |
+| `make prepare`     | Install Python and ROS dependencies |
+| `make run_vehicle` | Launch vehicle-side system          |
+| `make run_pilot`   | Launch operator-side system         |
+| `make controller`  | Run keyboard controller             |
+| `make clean`       | Remove build artifacts              |
+
+## Troubleshooting
+
+- **No sensor data in RViz**: Check that Zenoh bridge is connected (verify network connectivity between machines)
+- **Control not responding**: Ensure the controller is running on the vehicle and I2C bus 7 is accessible
+- **Connection refused**: Verify IP addresses and that the operator is running before starting the vehicle
+
+## Related Projects
+
+- [AutoSDV](https://github.com/NEWSLabNTU/AutoSDV) - Autonomous driving platform (based on Autoware 2025.02)
+- [Autoware](https://github.com/autowarefoundation/autoware) - Open-source autonomous driving stack
