@@ -1,14 +1,7 @@
 launch:
   - arg:
-      name: operator_ip
-
-  - arg:
       name: video_port
       default: "8080"
-
-  - arg:
-      name: zenoh_port
-      default: "8001"
 
   - arg:
       name: vehicle_model
@@ -18,12 +11,9 @@ launch:
       name: sensor_model
       default: f1eighth_sensor_kit
 
-  # Run the Zenoh bridge
-  - executable:
-      cmd: zenoh-bridge-ros2dds -e tcp/$(var operator_ip):$(var zenoh_port) peer
-      output: screen
-      launch-prefix: env RUST_LOG=warn
-      respawn: "true"
+  # Note: Zenoh connectivity is handled by rmw_zenoh_cpp (RMW_IMPLEMENTATION)
+  # Vehicle connects to operator's Zenoh router via ZENOH_SESSION_CONFIG_URI
+  # and ZENOH_CONFIG_OVERRIDE set in the justfile
 
   # Run Autoware
   - include:

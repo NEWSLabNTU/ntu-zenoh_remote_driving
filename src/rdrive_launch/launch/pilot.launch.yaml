@@ -4,10 +4,6 @@ launch:
       default: "8080"
 
   - arg:
-      name: zenoh_port
-      default: "8001"
-
-  - arg:
       name: vehicle_model
       default: f1eighth_vehicle
 
@@ -15,12 +11,9 @@ launch:
       name: sensor_model
       default: f1eighth_sensor_kit
 
-  # Run the Zenoh bridge
-  - executable:
-      cmd: zenoh-bridge-ros2dds -l tcp/0.0.0.0:$(var zenoh_port) peer
-      output: screen
-      launch-prefix: env RUST_LOG=warn
-      respawn: "true"
+  # Note: Zenoh connectivity is handled by rmw_zenoh_cpp (RMW_IMPLEMENTATION)
+  # Start Zenoh router separately with: just router
+  # Local nodes connect via ZENOH_SESSION_CONFIG_URI set in .envrc
 
   # Run the controller
   # - node:
