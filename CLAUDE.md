@@ -20,8 +20,12 @@ Operator Station                          Vehicle (AGX Orin)
 │  control)           │                  │ - LiDAR             │
 │         │           │                  │         │           │
 │         ▼           │                  │         ▼           │
-│ zenoh-bridge-ros2dds│◄────Zenoh───────►│ zenoh-bridge-ros2dds│
-│ (server mode)       │    TCP:8001      │ (client mode)       │
+│   rmw_zenoh_cpp     │                  │   rmw_zenoh_cpp     │
+│   (peer mode)       │                  │   (client mode)     │
+│         │           │                  │         │           │
+│         ▼           │                  │         │           │
+│   Zenoh Router      │◄────Zenoh───────►│   (connects to      │
+│   (rmw_zenohd)      │    TCP:7447      │    operator router) │
 │         │           │                  │         │           │
 │         ▼           │                  │         ▼           │
 │ RViz2 Visualization │                  │ remote_control      │
@@ -30,8 +34,8 @@ Operator Station                          Vehicle (AGX Orin)
 ```
 
 **Data Flow:**
-- Control commands: Operator → Zenoh → Vehicle → PCA9685 PWM → Motors
-- Sensor data: Vehicle sensors → Zenoh → Operator RViz2
+- Control commands: Operator → rmw_zenoh → Zenoh Router → Vehicle → PCA9685 PWM → Motors
+- Sensor data: Vehicle sensors → rmw_zenoh → Zenoh Router → Operator RViz2
 
 ## Environment Setup
 
@@ -47,33 +51,43 @@ The `.envrc` automatically sources:
 - `script/AutoSDV/install/setup.bash` (chains to ROS 2 Humble)
 - `install/setup.bash` (this project's workspace, when built)
 
+And sets rmw_zenoh environment variables:
+- `RMW_IMPLEMENTATION=rmw_zenoh_cpp`
+- `ZENOH_ROUTER_CONFIG_URI` - Path to router config
+- `ZENOH_SESSION_CONFIG_URI` - Path to session config (local by default)
+
 ## Build Commands
 
 ```bash
 just build      # Build the project
-just prepare    # Install Python dependencies (first time only)
+just setup      # Install Python dependencies (first time only)
 just clean      # Remove build artifacts
 ```
 
 ## Running the System
 
 ```bash
-# Step 1: On vehicle
-just run_vehicle operator_ip=192.168.225.71
+# Step 0 (optional): Reset ROS 2 daemon if switching RMW implementations
+just reset-daemon
 
-# Step 2: On operator machine
+# Step 1: On operator machine - Start Zenoh router (keep running)
+just router
+
+# Step 2: On operator machine - Start pilot station (new terminal)
 just run_pilot
 
-# Step 3: On vehicle (SSH from operator)
-ssh jetson@192.168.225.73
+# Step 3: On vehicle - Start vehicle nodes
+just run_vehicle operator_ip=192.168.225.71
+
+# Step 4: On operator machine - Run keyboard controller
 just controller
 ```
 
 ## Key File Locations
 
 ### Launch Files
-- `src/rdrive_launch/launch/vehicle.launch.yaml` - Vehicle-side launch (sensors + Zenoh bridge)
-- `src/rdrive_launch/launch/pilot.launch.yaml` - Operator-side launch (RViz + Zenoh bridge)
+- `src/rdrive_launch/launch/vehicle.launch.yaml` - Vehicle-side launch (Autoware sensing)
+- `src/rdrive_launch/launch/pilot.launch.yaml` - Operator-side launch (RViz visualization)
 - `src/rdrive_launch/rviz/pilot.rviz` - RViz visualization config
 
 ### ROS 2 Packages
@@ -85,10 +99,17 @@ just controller
 - `src/ffmpeg/` - Video streaming proxy (C++)
 
 ### Configuration
-- `.envrc` - direnv environment setup
+- `.envrc` - direnv environment setup (sets RMW_IMPLEMENTATION and Zenoh config paths)
 - `script/AutoSDV` - Symlink to AutoSDV installation
-- `config/ScreenCamera_position.json` - Open3D camera view preset
 - `justfile` - Build and run targets
+
+### Zenoh Configuration (`config/zenoh/`)
+- `router.json5` - Zenoh router config (operator station, listens on TCP:7447)
+- `session_local.json5` - Session config for local nodes (peer mode, connects to local router)
+- `session_vehicle.json5` - Session config for vehicle (client mode, connects to operator router)
+
+### Other Config
+- `config/ScreenCamera_position.json` - Open3D camera view preset
 
 ## Hardware Configuration
 
@@ -103,13 +124,11 @@ Default IP assignments:
 - Vehicle: 192.168.225.73
 
 Ports:
-- 8001: Zenoh DDS bridge
+- 7447: Zenoh router (rmw_zenoh)
 - 8003: FFmpeg video stream input
 - 8080: FFmpeg video stream client
 
-ROS Domain IDs:
-- Operator: ROS_DOMAIN_ID=6
-- Vehicle: ROS_DOMAIN_ID=9
+**Note:** With rmw_zenoh, ROS_DOMAIN_ID is not used. Communication isolation is handled via Zenoh router connectivity.
 
 ## Related Projects
 
@@ -122,11 +141,15 @@ This project uses Autoware in **sensing-only mode** - planning, perception, and 
 
 1. **Modifying launch parameters**: Edit YAML files in `src/rdrive_launch/launch/`
 2. **Testing control locally**: Use `ros2 topic pub` to send AckermannControlCommand
-3. **Debugging Zenoh**: Check Zenoh bridge logs on both sides for connection issues
+3. **Debugging Zenoh**: Use `RUST_LOG=zenoh=info` for router/session logs
 4. **Video streaming issues**: Ensure FFmpeg proxy is running if using video stream
+5. **Changing operator IP**: Override via `ZENOH_CONFIG_OVERRIDE='connect/endpoints=["tcp/NEW_IP:7447"]'`
 
 ## Common Issues
 
-- **No point cloud in RViz**: Check Zenoh bridge connection, verify LiDAR driver running on vehicle
+- **No point cloud in RViz**: Check Zenoh router is running on operator, verify vehicle can connect
+- **ROS 2 CLI not working**: Run `just reset-daemon` to restart ROS 2 daemon with rmw_zenoh
+- **Vehicle can't connect**: Verify operator IP in `just run_vehicle operator_ip=...` and firewall allows TCP:7447
 - **Control latency**: Monitor latency printed by remote_control node
 - **PWM not responding**: Verify I2C bus 7 access permissions on AGX Orin
+- **Router won't start (IPv6 error)**: Our config uses IPv4 (`tcp/0.0.0.0:7447`) which should work; check config file path
